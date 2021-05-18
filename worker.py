@@ -1,5 +1,3 @@
-
-
 from contextlib import contextmanager
 import colorama
 import atexit
@@ -623,7 +621,6 @@ def init(
     # Try to increase the file descriptor limit, which is too low by
     # default for Ray: https://github.com/ray-project/ray/issues/11239
     try:
-        print('start increase file descriptor', flush=True)
         import resource
         soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
         if soft < hard:
@@ -642,21 +639,15 @@ def init(
                 "servers and may result in connection errors. "
                 "At least 8192 is recommended. --- "
                 "Fix with 'ulimit -n 8192'".format(soft))
-        print('end increase file descriptor', flush=True)
     except ImportError:
-        print('fail increase file descriptor')
-        logger.debug("Could not import resource module (on Windows)", flush=True)
+        logger.debug("Could not import resource module (on Windows)")
         pass
 
-    print(1, flush=True)
     if "RAY_ADDRESS" in os.environ:
-        print('ray address in environ', address, os.environ["RAY_ADDRESS"], flush=True)
         if address is None or address == "auto":
             address = os.environ["RAY_ADDRESS"]
     # Convert hostnames to numerical IP address.
-    print(2, flush=True)
     if _node_ip_address is not None:
-        print(2.5, flush=True)
         node_ip_address = services.address_to_ip(_node_ip_address)
     raylet_ip_address = node_ip_address
 
@@ -667,7 +658,6 @@ def init(
 
     if configure_logging:
         setup_logger(logging_level, logging_format)
-    print(3, flush=True)
 
     if redis_address is not None:
         logger.info(
@@ -679,7 +669,6 @@ def init(
         driver_mode = SCRIPT_MODE
 
     if global_worker.connected:
-        print('ray already init', flush=True)
         if ignore_reinit_error:
             logger.info(
                 "Calling ray.init() again after it has already been called.")
@@ -695,9 +684,8 @@ def init(
         raise TypeError("The _system_config must be a dict.")
 
     global _global_node
-    print(4, flush=True)
     if redis_address is None:
-        print('start a new cluster', flush=True)
+        print('[debug] start new cluster', flush=True)
         # In this case, we need to start a new cluster.
         ray_params = ray._private.parameter.RayParams(
             redis_address=redis_address,
@@ -736,19 +724,18 @@ def init(
             enable_object_reconstruction=_enable_object_reconstruction,
             metrics_export_port=_metrics_export_port,
             tracing_startup_hook=_tracing_startup_hook)
-        print('done 1 starting new cluster', flush=True)
         # Start the Ray processes. We set shutdown_at_exit=False because we
         # shutdown the node in the ray.shutdown call that happens in the atexit
         # handler. We still spawn a reaper process in case the atexit handler
         # isn't called.
+        print('[debug] done 1 start new cluster', flush=True)
         _global_node = ray.node.Node(
             head=True,
             shutdown_at_exit=False,
             spawn_reaper=True,
             ray_params=ray_params)
-        print('done 2 starting new cluster', flush=True)
+        print('[debug] done 2 start new cluster', flush=True)
     else:
-        print('connect to existing cluster', flush=True)
         # In this case, we are connecting to an existing cluster.
         if num_cpus is not None or num_gpus is not None:
             raise ValueError(
@@ -768,7 +755,6 @@ def init(
                 "When connecting to an existing cluster, "
                 "_enable_object_reconstruction must not be provided.")
 
-        print('start connecting', flush=True)
         # In this case, we only need to connect the node.
         ray_params = ray._private.parameter.RayParams(
             node_ip_address=node_ip_address,
@@ -781,21 +767,19 @@ def init(
             lru_evict=_lru_evict,
             enable_object_reconstruction=_enable_object_reconstruction,
             metrics_export_port=_metrics_export_port)
-        print('done 1 connecting', flush=True)
         _global_node = ray.node.Node(
             ray_params,
             head=False,
             shutdown_at_exit=False,
             spawn_reaper=False,
             connect_only=True)
-        print('don 2 connecting', flush=True)
-    print(5, flush=True)
 
     if driver_mode == SCRIPT_MODE and job_config:
         # Rewrite the URI. Note the package isn't uploaded to the URI until
         # later in the connect
         runtime_env.rewrite_runtime_env_uris(job_config)
-    print(6, flush=True)
+
+    print('[debug] connect', flush=True)
     connect(
         _global_node,
         mode=driver_mode,
@@ -804,9 +788,8 @@ def init(
         driver_object_store_memory=_driver_object_store_memory,
         job_id=None,
         job_config=job_config)
-    print(7, flush=True)
+    print('[debug] connect done', flush=True)
     if job_config and job_config.code_search_path:
-        print(7.4, flush=True)
         global_worker.set_load_code_from_local(True)
     else:
         # Because `ray.shutdown()` doesn't reset this flag, for multiple
@@ -818,18 +801,12 @@ def init(
         #     # Here the flag `load_code_from_local` is still True if we
         #     # doesn't have this `else` branch.
         #     ray.shutdown()
-        print(7.8, flush=True)
         global_worker.set_load_code_from_local(False)
-    print(8, flush=True)
 
     for hook in _post_init_hooks:
-        print('hook', flush=True)
         hook()
-    
-    print(9, flush=True)
 
     node_id = global_worker.core_worker.get_current_node_id()
-    print(10, flush=True)
     return dict(_global_node.address_info, node_id=node_id.hex())
 
 
@@ -1167,6 +1144,7 @@ def connect(node,
         job_id: The ID of job. If it's None, then we will generate one.
         job_config (ray.job_config.JobConfig): The job configuration.
     """
+    print('[debug] connecting - start', flush=True)
     # Do some basic checking to make sure we didn't call ray.init twice.
     error_message = "Perhaps you called ray.init twice by accident?"
     assert not worker.connected, error_message
@@ -1185,6 +1163,9 @@ def connect(node,
     # https://github.com/andymccurdy/redis-py#thread-safety.
     worker.redis_client = node.create_redis_client()
 
+    print('[debug] connecting - worker redis client', flush=True)
+
+    print('[debug] connecting - initialize', mode, flush=True)
     # Initialize some fields.
     if mode in (WORKER_MODE, RESTORE_WORKER_MODE, SPILL_WORKER_MODE,
                 UTIL_WORKER_MODE):
@@ -1224,6 +1205,7 @@ def connect(node,
     worker.node = node
     worker.set_mode(mode)
 
+    print('[debug] connecting - driver checks', flush=True)
     # For driver's check that the version information matches the version
     # information that the Ray cluster was started with.
     try:
@@ -1252,6 +1234,7 @@ def connect(node,
         raise ValueError(
             "Invalid worker mode. Expected DRIVER, WORKER or LOCAL.")
 
+    print('[debug] connecting - rdis gcs', flush=True)
     redis_address, redis_port = node.redis_address.split(":")
     gcs_options = ray._raylet.GcsClientOptions(
         redis_address,
@@ -1261,6 +1244,7 @@ def connect(node,
     if job_config is None:
         job_config = ray.job_config.JobConfig()
 
+    print('[debug] connecting - coreworker', flush=True)
     serialized_job_config = job_config.serialize()
     worker.core_worker = ray._raylet.CoreWorker(
         mode, node.plasma_store_socket_name, node.raylet_socket_name, job_id,
@@ -1270,6 +1254,7 @@ def connect(node,
         serialized_job_config, node.metrics_agent_port)
     worker.gcs_client = worker.core_worker.get_gcs_client()
 
+    print('[debug] connecting - init global state', flush=True)
     # Create an object for interfacing with the global state.
     # Note, global state should be intialized after `CoreWorker`, because it
     # will use glog, which is intialized in `CoreWorker`.
@@ -1290,13 +1275,16 @@ def connect(node,
         if working_dir is not None:
             os.chdir(working_dir)
 
+    print('[debug] connecting - notify raylet', flush=True)
     # Notify raylet that the core worker is ready.
     worker.core_worker.notify_raylet()
 
+    print('[debug] connecting - object store memory', flush=True)
     if driver_object_store_memory is not None:
         worker.core_worker.set_object_store_client_options(
             f"ray_driver_{os.getpid()}", driver_object_store_memory)
 
+    print('[debug] connecting - start thread', flush=True)
     # Start the import thread
     if mode not in (RESTORE_WORKER_MODE, SPILL_WORKER_MODE, UTIL_WORKER_MODE):
         worker.import_thread = import_thread.ImportThread(
@@ -1309,6 +1297,8 @@ def connect(node,
     # trying to properly shutdown the driver's worker service, so we are
     # temporarily using this implementation which constantly queries the
     # scheduler for new error messages.
+    print('[debug] connecting - script mode?', mode == SCRIPT_MODE, flush=True)
+    print('[debug] connecting - start logging thread', flush=True)
     if mode == SCRIPT_MODE:
         worker.listener_thread = threading.Thread(
             target=listen_error_messages_raylet,
@@ -1326,6 +1316,7 @@ def connect(node,
             worker.logger_thread.daemon = True
             worker.logger_thread.start()
 
+    print('[debug] connecting - add directories', flush=True)
     if mode == SCRIPT_MODE:
         # Add the directory containing the script that is running to the Python
         # paths of the workers. Also add the current directory. Note that this
@@ -1355,6 +1346,7 @@ def connect(node,
             worker.run_function_on_all_workers(function)
     worker.cached_functions_to_run = None
 
+    print('[debug] connecting - setup tracing', flush=True)
     # Setup tracing here
     if _internal_kv_get("tracing_startup_hook"):
         ray.util.tracing.tracing_helper._global_is_tracing_enabled = True
@@ -1363,6 +1355,7 @@ def connect(node,
                 _internal_kv_get("tracing_startup_hook").decode("utf-8"))
             _setup_tracing()
             ray.__traced__ = True
+    print('[debug] connecting - done', flush=True)
 
 
 def disconnect(exiting_interpreter=False):
@@ -1984,4 +1977,3 @@ def remote(*args, **kwargs):
         max_task_retries=max_task_retries,
         max_retries=max_retries,
         worker=worker)
-
