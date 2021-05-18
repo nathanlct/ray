@@ -1244,14 +1244,22 @@ def connect(node,
     if job_config is None:
         job_config = ray.job_config.JobConfig()
 
-    print('[debug] connecting - coreworker', flush=True)
+    print('[debug] connecting - coreworker serialize', flush=True)
     serialized_job_config = job_config.serialize()
+
+    print('[debug] connecting - coreworker init with params',
+        mode, node.plasma_store_socket_name, node.raylet_socket_name, job_id,
+        gcs_options, node.get_logs_dir_path(), node.node_ip_address,
+        node.node_manager_port, node.raylet_ip_address, (mode == LOCAL_MODE),
+        driver_name, log_stdout_file_path, log_stderr_file_path,
+        serialized_job_config, node.metrics_agent_port, flush=True)
     worker.core_worker = ray._raylet.CoreWorker(
         mode, node.plasma_store_socket_name, node.raylet_socket_name, job_id,
         gcs_options, node.get_logs_dir_path(), node.node_ip_address,
         node.node_manager_port, node.raylet_ip_address, (mode == LOCAL_MODE),
         driver_name, log_stdout_file_path, log_stderr_file_path,
         serialized_job_config, node.metrics_agent_port)
+    print('[debug] connecting - coreworker get gcs', flush=True)
     worker.gcs_client = worker.core_worker.get_gcs_client()
 
     print('[debug] connecting - init global state', flush=True)
